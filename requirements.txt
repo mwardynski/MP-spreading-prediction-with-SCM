@@ -5,6 +5,7 @@ numpy
 nibabel
 matplotlib
 pyyaml
-sklearn
+scikit-learn
 prettytable
 nilearn
+nipype
