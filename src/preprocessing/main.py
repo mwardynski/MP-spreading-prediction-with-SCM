@@ -26,7 +26,7 @@ from utils.registration import Registration, Registration
 from utils.brain_segmentation import BrainSegmentation
 import logging
 import logging.handlers
-from multiprocessing import cpu_count, Process
+from multiprocessing import cpu_count, Process, set_start_method, get_start_method
 import numpy as np
 from tqdm import tqdm
 from datetime import datetime
@@ -45,7 +45,7 @@ def check_path(path):
 
 def run(f, img_type, atlas_file):
     f = f.removeprefix("\"").removeprefix("\'").removesuffix("\"").replace('./', '')
-    path = os.getcwd() + os.sep + f.removesuffix(f.split('/')[-1])
+    path = f.removesuffix(f.split('/')[-1])
     output_directory = dataset_path + 'derivatives/' + str(re.split(dataset_path, path)[-1])
     check_path(output_directory)
     # NOTE: intermediate_dir must exist because some modules use it to store their output (i.e. FLIRT)
@@ -317,6 +317,8 @@ start_time = datetime.today()
 logging.basicConfig(format='%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s', datefmt='%Y-%m-%d,%H:%M:%S', level=logging.INFO, force = True, filename = f"trace_{start_time.strftime('%Y-%m-%d-%H:%M:%S')}.log")
 
 if __name__=='__main__':
+    set_start_method('fork')
+
     re_img_type = re.compile(r"(dwi|pet|anat)")
 
     if len(sys.argv) > 1:
@@ -377,6 +379,7 @@ if __name__=='__main__':
     logging.info(f"Images list or type: {img_type}")
     logging.info(f"Dataset path provided: {dataset_path}")
     logging.info(f"Cores: {num_cores}")
+    logging.info(f"Process start method: {get_start_method()}")
     logging.info(f"Number of images to process: {len(files)}")
     logging.info("List of images to process: ")
     logging.info(files)
