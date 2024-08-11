@@ -75,7 +75,7 @@ def run(f, img_type, atlas_file):
         except Exception as e:
             logging.error(e)
             logging.info(f"Using standard atlas for registration of {name_nii}")
-            atlas_file = 'AAL3v1.nii.gz'
+            atlas_file = main_path + '/AAL3v1.nii.gz'
             print(e)
             print(f"Using standard atlas for registration of {name_nii}")
 
@@ -345,7 +345,8 @@ if __name__=='__main__':
         #logging.info(f"Looking for all '.nii' files in the path {dataset_path} (excluding \'derivatives\' folder)...")
         output = Popen(f"find {dataset_path} ! -path \'*derivatives*\' -name \'*{img_type}.nii\'", shell=True, stdout=PIPE)
         files = str(output.stdout.read()).removeprefix('b\'').removesuffix('\'').removesuffix('\\n').split('\\n')
-        
+
+    main_path = os.getcwd()    
     # If it starts with '/' it is an absolute path, otherwise make it absolute
     if not dataset_path.startswith('/'): 
         dataset_path = os.getcwd() + os.sep + dataset_path if dataset_path != '.' else os.getcwd() + os.sep
