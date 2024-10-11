@@ -1,11 +1,11 @@
 paths:
-  dataset_dir: "ADNI_Dataset/ADNI/derivatives/"
-  atlas_path: "utilities/AAL3v1.nii.gz"
-  atlas_pets: "utilities/AAL3v1_1mm.nii.gz"               # NOTE: for DTI/ANAT the low resolution atlas has been used, while for the pets the high resolution
+  dataset_dir: "/Volumes/External/ADNI_derivatives/"
+  atlas_path: "MP-spreading-prediction/utilities/AAL3v1.nii.gz"
+  atlas_pets: "MP-spreading-prediction/utilities/AAL3v1_1mm.nii.gz"               # NOTE: for DTI/ANAT the low resolution atlas has been used, while for the pets the high resolution
   subject: 'all'                                # if 'all' (aka None): scripts are run on the whole dataset 
 
 tractogram_config:
-  keep_tract: True                             # if 'true', Skips already processed tractographies, otherwise re-compute
+  keep_tract: False                             # if 'true', Skips already processed tractographies, otherwise re-compute
   stop_method: 'ACT'                            # type of stopping citerion
   fa_thres: 0.2                                 # fractional anisotropy threshold; originally =0.7
   seed_density: 1                               # the number of seeds to place along each dimension

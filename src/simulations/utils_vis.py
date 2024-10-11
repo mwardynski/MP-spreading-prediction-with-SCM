@@ -49,7 +49,8 @@ def visualize_diffusion_timeplot(matrix, timestep, total_time, save_dir=None):
         plt.savefig(os.path.join(save_dir, 'diffusion_over_time.png'))
     plt.show() 
     
-def save_prediction_plot(baseline, prediction, followup, subject, filepath, error=None, corr_coeff=None):    
+def save_prediction_plot(baseline, prediction, followup, subject, filepath, error=None, corr_coeff=None):
+    plt.switch_backend('Agg')     
     plt.figure(figsize=(18, 10))
     plt.plot(baseline, '-', marker='o', c='#390099', label='baseline', linewidth=1)
     plt.plot(followup, '-', marker='o', c='#00A6FB', label='followup', linewidth=1)
