@@ -1,3 +1,9 @@
+"""
+    SYNOPSIS
+    python3 simulation_ESM.py <category> <cores> <mu> <lambdaD> <I_percentage> <NSteps>
+"""
+
+
 from datetime import datetime
 import json
 from threading import Thread, Lock
@@ -15,6 +21,9 @@ from scipy.stats import pearsonr as pearson_corr_coef
 from sklearn.metrics import mean_squared_error
 import re
 
+import networkx as nx
+
+from utils_simplagion_MC import *
 from utils_vis import *
 from utils import *
 
@@ -32,8 +41,81 @@ class SCM(Thread):
         self.subj = subj
         self.n_regions = n_regions
 
+    def find_k2_k3(self, G):
+        node_neighbors_dict = {}
+        for n in G.nodes():
+            node_neighbors_dict[n] = G[n].keys()
+
+        triangles_list = set()
+        triangles = [clique for clique in nx.enumerate_all_cliques(G) if len(clique) == 3]
+        for triangle in triangles:
+            triangles_list.add(tuple(sorted(triangle)))
+        triangles_list = [list(tri) for tri in triangles_list]
+
+        return node_neighbors_dict, triangles_list
+
+    def import_connectome(self):
+
+        G = nx.from_numpy_array(self.cm)
+        node_neighbors_dict, triangles_list = self.find_k2_k3(G)
+
+        N = len(node_neighbors_dict.keys())
+        avg_k1 = 1.*sum([len(v) for v in node_neighbors_dict.values()])/N
+        avg_k2 = 3.*len(triangles_list)/N
+
+        return node_neighbors_dict, triangles_list, avg_k1, avg_k2
+    
+    def markovChain(self, beta, beta_D, mu, node_neighbors_dict, tri_neighbors_dict, NSteps, i0):
+        N = len(node_neighbors_dict)
+        p = self.t0_concentration
+        p_new = np.copy(p)
+        
+        q = 1
+        pTime = [np.mean(p)]
+        for k in range(0,NSteps):
+            for i in range(0,N):
+                
+                #Updating the q_i (infections) - d=1
+                for j in node_neighbors_dict[i]:
+                    q *= (1.-beta*p[j])
+                    
+                #Updating the q_i (infections) - d=2
+                for j, k in tri_neighbors_dict[i]:
+                    q *= (1.-beta_D*p[j]*p[k])
+                
+                #Updating the vector
+                p_new[i] = (1-q)*(1-p[i]) + (1.-mu)*p[i]
+                
+                #Resetting the i-th parameters
+                q = 1
+                
+            p = np.copy(p_new)
+            pTime.append(np.mean(p))
+        return np.mean(pTime[int(NSteps*0.8):]), p
+
     def simulation(self):
-        return self.t0_concentration
+        self.cm = drop_data_in_connect_matrix(load_matrix(self.paths['CM']))
+
+        node_neighbors_dict, triangles_list, avg_k1, avg_k2 = self.import_connectome()
+        tri_neighbors_dict = get_tri_neighbors_dict(triangles_list)
+
+        mu = 0.05
+        lambda1s = np.linspace(0.0001,1.5,20)
+
+        betas = 1.*(mu/avg_k1)*lambda1s
+
+        t1_pred = None
+
+        beta_D = 1.*(mu/avg_k2)*lambdaD
+        i0 = I_percentage/100.
+        rho_markov = []
+        for beta in betas:
+            rho_m, p = self.markovChain(beta, beta_D, mu, node_neighbors_dict, tri_neighbors_dict, NSteps, i0)
+            rho_markov.append(rho_m)
+        t1_pred = p
+
+
+        return t1_pred
 
     def run(self):
         logging.info(f"Starting simulation for subject {self.subj}")
@@ -118,6 +200,40 @@ if __name__=="__main__":
             num_cores = cpu_count()
             logging.info(f"{num_cores} cores available")
 
+        beta_0 = float(sys.argv[3]) if len(sys.argv) > 3 else -1
+    
+    mu = float(sys.argv[3]) if len(sys.argv) > 3 else -1
+    while mu < 0:
+        try:
+            mu = float(input('Insert the value for mu [default 0.05]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            mu = 0.05
+
+    lambdaD = float(sys.argv[4]) if len(sys.argv) > 4 else -1
+    while lambdaD < 0:
+        try:
+            lambdaD = float(input('Insert the value for lambdaD [default 2.5]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            lambdaD = 2.5
+
+    I_percentage = int(sys.argv[5]) if len(sys.argv) > 5 else -1
+    while I_percentage < 0:
+        try:
+            I_percentage = int(input('Insert the value for I_percentage [default 1]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            I_percentage = 1
+
+    NSteps = int(sys.argv[6]) if len(sys.argv) > 6 else -1
+    while NSteps < 0:
+        try:
+            NSteps = int(input('Insert the value for NSteps [default 500]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            NSteps = 500
+
     
     ### SIMULATIONS ###
 
@@ -190,6 +306,10 @@ if __name__=="__main__":
     out_file = open(filename, 'w')
     out_file.write(f"Category: {category}\n")
     out_file.write(f"Cores: {num_cores}\n")
+    out_file.write(f"mu: {mu}\n")
+    out_file.write(f"lambdaD: {lambdaD}\n")
+    out_file.write(f"I_percentage: {I_percentage}\n")
+    out_file.write(f"NSteps: {NSteps}\n")
     out_file.write(f"Subjects: {len(dataset.keys())}\n")
     out_file.write(f"Total time (s): {format(total_time, '.2f')}\n")
     out_file.write(pt_avg.get_string()+'\n')
@@ -197,6 +317,10 @@ if __name__=="__main__":
     out_file.close()
     logging.info('***********************')
     logging.info(f"Category: {category}")
+    logging.info(f"Cores: {num_cores}")
+    logging.info(f"mu: {mu}")
+    logging.info(f"lambdaD: {lambdaD}")
+    logging.info(f"NSteps: {NSteps}")
     logging.info(f"Cores: {num_cores}")
     logging.info(f"Subjects: {len(dataset.keys())}")
     logging.info(f"Total time (s): {format(total_time, '.2f')}")
