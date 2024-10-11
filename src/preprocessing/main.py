@@ -369,7 +369,7 @@ if __name__=='__main__':
         if len(atlas_file) == 0:
             atlas_file = 'anat'
     if (not atlas_file == 'anat') and (not atlas_file.startswith(os.sep)):
-        atlas_file = os.getcwd() + os.sep + atlas_file
+        atlas_file = main_path + os.sep + atlas_file
         #os.getcwd() + '/AAL3v1.nii.gz'
 
     # TODO

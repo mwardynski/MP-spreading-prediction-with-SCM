@@ -1,7 +1,7 @@
 visbrain
 pandas
 dipy
-numpy 
+numpy==1.26.4 
 nibabel
 matplotlib
 pyyaml
@@ -9,3 +9,5 @@ scikit-learn
 prettytable
 nilearn
 nipype
+scikit-image
+spektral

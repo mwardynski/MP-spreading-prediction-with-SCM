@@ -10,6 +10,7 @@ def task_completion_info(sound_duration=1, sound_freq=440):
     
 def parallelize(dwi_files, tract_files, num_cores, run, config, general_dir):
     ''' Run function on multiple subjects in parallel. '''
+    multiprocessing.set_start_method('fork')
 
     if num_cores == -1:
         num_cores = multiprocessing.cpu_count()

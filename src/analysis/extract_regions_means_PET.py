@@ -13,7 +13,7 @@ import numpy as np
 from skimage.util import montage
 import matplotlib.pyplot as plt
 from threading import Thread, Lock
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, set_start_method
 import yaml
 from datetime import datetime
 
@@ -114,6 +114,8 @@ class pet_loader(Thread):
 
 
 if __name__ == '__main__':
+    set_start_method('fork')
+
     ## INPUT
     with open('../../config.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
