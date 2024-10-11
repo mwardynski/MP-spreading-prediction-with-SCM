@@ -44,7 +44,7 @@ class SCM(Thread):
     def find_k2_k3(self, G):
         node_neighbors_dict = {}
         for n in G.nodes():
-            node_neighbors_dict[n] = G[n].keys()
+            node_neighbors_dict[n] = G[n]
 
         triangles_list = set()
         triangles = [clique for clique in nx.enumerate_all_cliques(G) if len(clique) == 3]
@@ -77,11 +77,14 @@ class SCM(Thread):
                 
                 #Updating the q_i (infections) - d=1
                 for j in node_neighbors_dict[i]:
-                    q *= (1.-beta*p[j])
+                    wj = 1-node_neighbors_dict[i][j]['weight']
+                    q *= (1.-beta*wj*p[j])
                     
                 #Updating the q_i (infections) - d=2
                 for j, k in tri_neighbors_dict[i]:
-                    q *= (1.-beta_D*p[j]*p[k])
+                    wj = 1-node_neighbors_dict[i][j]['weight']
+                    wk = 1-node_neighbors_dict[i][k]['weight']
+                    q *= (1.-beta_D*wj*p[j]*wk*p[k])
                 
                 #Updating the vector
                 p_new[i] = (1-q)*(1-p[i]) + (1.-mu)*p[i]
