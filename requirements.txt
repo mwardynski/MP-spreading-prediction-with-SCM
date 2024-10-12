@@ -11,3 +11,4 @@ nilearn
 nipype
 scikit-image
 spektral
+optuna

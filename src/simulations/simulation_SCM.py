@@ -33,12 +33,40 @@ date = datetime.now().strftime('%y-%m-%d_%H:%M:%S')
 logging.basicConfig(format='%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s', datefmt='%Y-%m-%d,%H:%M:%S', level=logging.INFO, force=True, filename = f"trace_{sim_name}_{date}.log")
 digits = 4
 
+class Params():
+    def __init__(self, mu, lambda1, lambdaD, I_percentage, NSteps):
+        self.lock = Lock()
+        self.mu = mu
+        self.lambda1 = lambda1
+        self.lambdaD = lambdaD
+        self.I_percentage = I_percentage
+        self.NSteps = NSteps
+
+class Results():
+
+    def __init__(self):
+        pt_avg = PrettyTable()
+        pt_avg.field_names = ["CG", "Avg MSE", "SD MSE", "Avg Pearson", "SD Pearson"]
+        
+        pt_subs = PrettyTable()
+        pt_subs.field_names = ["ID", "MSE", "Pearson"]
+        pt_subs.sortby = "ID" # Set the table always sorted by patient ID
+
+        self.pt_avg = pt_avg
+        self.pt_subs = pt_subs
+        self.total_mse = {}
+        self.total_pcc = {}
+        self.total_reg_err = {}
+
+
 class SCM(Thread):
     
-    def __init__(self, paths, subj, n_regions = 166):
+    def __init__(self, paths, subj, params, results, n_regions = 166):
         Thread.__init__(self)
         self.paths = paths 
         self.subj = subj
+        self.params = params
+        self.results = results
         self.n_regions = n_regions
 
     def find_k2_k3(self, G):
@@ -65,14 +93,14 @@ class SCM(Thread):
 
         return node_neighbors_dict, triangles_list, avg_k1, avg_k2
     
-    def markovChain(self, beta, beta_D, mu, node_neighbors_dict, tri_neighbors_dict, NSteps, i0):
+    def markovChain(self, beta, beta_D, node_neighbors_dict, tri_neighbors_dict, i0):
         N = len(node_neighbors_dict)
         p = self.t0_concentration
         p_new = np.copy(p)
         
         q = 1
         pTime = [np.mean(p)]
-        for k in range(0,NSteps):
+        for k in range(0,self.params.NSteps):
             for i in range(0,N):
                 
                 #Updating the q_i (infections) - d=1
@@ -87,14 +115,14 @@ class SCM(Thread):
                     q *= (1.-beta_D*wj*p[j]*wk*p[k])
                 
                 #Updating the vector
-                p_new[i] = (1-q)*(1-p[i]) + (1.-mu)*p[i]
+                p_new[i] = (1-q)*(1-p[i]) + (1.-self.params.mu)*p[i]
                 
                 #Resetting the i-th parameters
                 q = 1
                 
             p = np.copy(p_new)
             pTime.append(np.mean(p))
-        return np.mean(pTime[int(NSteps*0.8):]), p
+        return np.mean(pTime[int(self.params.NSteps*0.8):]), p
 
     def simulation(self):
         self.cm = drop_data_in_connect_matrix(load_matrix(self.paths['CM']))
@@ -102,11 +130,11 @@ class SCM(Thread):
         node_neighbors_dict, triangles_list, avg_k1, avg_k2 = self.import_connectome()
         tri_neighbors_dict = get_tri_neighbors_dict(triangles_list)
 
-        beta = 1.*(mu/avg_k1)*lambda1
+        beta = 1.*(self.params.mu/avg_k1)*self.params.lambda1
 
-        beta_D = 1.*(mu/avg_k2)*lambdaD
-        i0 = I_percentage/100.
-        _, p = self.markovChain(beta, beta_D, mu, node_neighbors_dict, tri_neighbors_dict, NSteps, i0)
+        beta_D = 1.*(self.params.mu/avg_k2)*self.params.lambdaD
+        i0 = self.params.I_percentage/100.
+        _, p = self.markovChain(beta, beta_D, node_neighbors_dict, tri_neighbors_dict, i0)
         t1_pred = p
 
         return t1_pred
@@ -145,16 +173,37 @@ class SCM(Thread):
         
         reg_err = np.abs(self.t1_concentration_pred - self.t1_concentration)
         
-        lock.acquire()
+        self.params.lock.acquire()
         save_prediction_plot(self.t0_concentration, self.t1_concentration_pred, self.t1_concentration, self.subj, self.subj + 'test/' + sim_name + '_' + date + '.png', mse, pcc)
         logging.info(f"Saving prediction in {self.subj + 'test/' + sim_name + '_' + date + '.png'}")
-        total_mse[self.subj] = mse
-        total_pcc[self.subj] = pcc
-        total_reg_err[self.subj] = reg_err
-        pt_subs.add_row([self.subj, round(mse,digits), round(pcc,digits)])
-        lock.release()
+        self.results.total_mse[self.subj] = mse
+        self.results.total_pcc[self.subj] = pcc
+        self.results.total_reg_err[self.subj] = reg_err
+        self.results.pt_subs.add_row([self.subj, round(mse,digits), round(pcc,digits)])
+        self.params.lock.release()
             
         return
+
+def exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps):
+    
+    params = Params(mu, lambda1, lambdaD, I_percentage, NSteps)
+
+    works = []
+    for subj, paths in tqdm(dataset.items()):
+        works.append(SCM(paths, subj, params, results))
+        works[-1].start()
+        while len (works) >= num_cores:
+            for w in works:
+                if not w.is_alive():
+                    works.remove(w)
+            
+    for w in works:
+        w.join()
+        works.remove(w)
+
+    avg_mse = round(np.mean(list(results.total_mse.values())), digits)
+
+    return avg_mse
 
 if __name__=="__main__":
 
@@ -239,33 +288,11 @@ if __name__=="__main__":
     
     ### SIMULATIONS ###
 
-    pt_avg = PrettyTable()
-    pt_avg.field_names = ["CG", "Avg MSE", "SD MSE", "Avg Pearson", "SD Pearson"]
-    
-    pt_subs = PrettyTable()
-    pt_subs.field_names = ["ID", "MSE", "Pearson"]
-    pt_subs.sortby = "ID" # Set the table always sorted by patient ID
-
-    total_mse = {}
-    total_pcc = {}
-    total_reg_err = {}
-    
     total_time = time()
 
-    lock = Lock()
+    results = Results()
     
-    works = []
-    for subj, paths in tqdm(dataset.items()):
-        works.append(SCM(paths, subj))
-        works[-1].start()
-        while len (works) >= num_cores:
-            for w in works:
-                if not w.is_alive():
-                    works.remove(w)
-            
-    for w in works:
-        w.join()
-        works.remove(w)
+    exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps)
         
         
     total_time = time() - total_time
@@ -278,11 +305,11 @@ if __name__=="__main__":
         cat_reg_err = []
         cat_total_mse = []
         cat_total_pcc = []
-        for sub in total_reg_err.keys():
+        for sub in results.total_reg_err.keys():
             if re.match(rf".*sub-{c}.*", sub):
-                cat_reg_err.append(total_reg_err[sub])
-                cat_total_mse.append(total_mse[sub])
-                cat_total_pcc.append(total_pcc[sub])
+                cat_reg_err.append(results.total_reg_err[sub])
+                cat_total_mse.append(results.total_mse[sub])
+                cat_total_pcc.append(results.total_pcc[sub])
 
         if len(cat_reg_err) == 0:
             continue
@@ -295,11 +322,11 @@ if __name__=="__main__":
         avg_pcc = np.mean(cat_total_pcc, axis=0)
         std_pcc = np.std(cat_total_pcc, axis=0)
         
-        pt_avg.add_row([c, round(avg_mse, digits), round(std_mse, 2), round(avg_pcc, digits), round(std_pcc, 2)])
+        results.pt_avg.add_row([c, round(avg_mse, digits), round(std_mse, 2), round(avg_pcc, digits), round(std_pcc, 2)])
     
     if category not in categories:
-        pt_avg.add_row([category, round(np.mean(list(total_mse.values())), digits), round(np.std(list(total_mse.values())), 2), round(np.mean(list(total_pcc.values())), digits), round(np.std(list(total_pcc.values())), 2)])
-        avg_reg_err = np.mean(list(total_reg_err.values()), axis=0)
+        results.pt_avg.add_row([category, round(np.mean(list(results.total_mse.values())), digits), round(np.std(list(results.total_mse.values())), 2), round(np.mean(list(results.total_pcc.values())), digits), round(np.std(list(results.total_pcc.values())), 2)])
+        avg_reg_err = np.mean(list(results.total_reg_err.values()), axis=0)
         avg_reg_err_filename = output_res +f'{sim_name}_region_{category}_{date}.png'
         save_avg_regional_errors(avg_reg_err, avg_reg_err_filename)
         np.savetxt(f"{output_mat}{sim_name}_{category}_regions_{date}.csv", avg_reg_err, delimiter=',')
@@ -314,8 +341,8 @@ if __name__=="__main__":
     out_file.write(f"NSteps: {NSteps}\n")
     out_file.write(f"Subjects: {len(dataset.keys())}\n")
     out_file.write(f"Total time (s): {format(total_time, '.2f')}\n")
-    out_file.write(pt_avg.get_string()+'\n')
-    out_file.write(pt_subs.get_string())    
+    out_file.write(results.pt_avg.get_string()+'\n')
+    out_file.write(results.pt_subs.get_string())    
     out_file.close()
     logging.info('***********************')
     logging.info(f"Category: {category}")
