@@ -1,6 +1,6 @@
 """
     SYNOPSIS
-    python3 simulation_ESM.py <category> <cores> <mu> <lambdaD> <I_percentage> <NSteps>
+    python3 simulation_ESM.py <category> <cores> <mu> <lambda> <lambdaD> <I_percentage> <NSteps>
 """
 
 
@@ -102,21 +102,12 @@ class SCM(Thread):
         node_neighbors_dict, triangles_list, avg_k1, avg_k2 = self.import_connectome()
         tri_neighbors_dict = get_tri_neighbors_dict(triangles_list)
 
-        mu = 0.05
-        lambda1s = np.linspace(0.0001,1.5,20)
-
-        betas = 1.*(mu/avg_k1)*lambda1s
-
-        t1_pred = None
+        beta = 1.*(mu/avg_k1)*lambda1
 
         beta_D = 1.*(mu/avg_k2)*lambdaD
         i0 = I_percentage/100.
-        rho_markov = []
-        for beta in betas:
-            rho_m, p = self.markovChain(beta, beta_D, mu, node_neighbors_dict, tri_neighbors_dict, NSteps, i0)
-            rho_markov.append(rho_m)
+        _, p = self.markovChain(beta, beta_D, mu, node_neighbors_dict, tri_neighbors_dict, NSteps, i0)
         t1_pred = p
-
 
         return t1_pred
 
@@ -155,7 +146,6 @@ class SCM(Thread):
         reg_err = np.abs(self.t1_concentration_pred - self.t1_concentration)
         
         lock.acquire()
-        # TODO: uncomment the lower line
         save_prediction_plot(self.t0_concentration, self.t1_concentration_pred, self.t1_concentration, self.subj, self.subj + 'test/' + sim_name + '_' + date + '.png', mse, pcc)
         logging.info(f"Saving prediction in {self.subj + 'test/' + sim_name + '_' + date + '.png'}")
         total_mse[self.subj] = mse
@@ -213,7 +203,16 @@ if __name__=="__main__":
             logging.info('Using default value')
             mu = 0.05
 
-    lambdaD = float(sys.argv[4]) if len(sys.argv) > 4 else -1
+    # 0.0001,1.5,20
+    lambda1 = float(sys.argv[4]) if len(sys.argv) > 4 else -1
+    while lambda1 < 0:
+        try:
+            lambda1 = float(input('Insert the value for lambda1 [default 1.5]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            lambda1 = 1.5
+
+    lambdaD = float(sys.argv[5]) if len(sys.argv) > 5 else -1
     while lambdaD < 0:
         try:
             lambdaD = float(input('Insert the value for lambdaD [default 2.5]: '))
@@ -221,7 +220,7 @@ if __name__=="__main__":
             logging.info('Using default value')
             lambdaD = 2.5
 
-    I_percentage = int(sys.argv[5]) if len(sys.argv) > 5 else -1
+    I_percentage = int(sys.argv[6]) if len(sys.argv) > 6 else -1
     while I_percentage < 0:
         try:
             I_percentage = int(input('Insert the value for I_percentage [default 1]: '))
@@ -229,13 +228,13 @@ if __name__=="__main__":
             logging.info('Using default value')
             I_percentage = 1
 
-    NSteps = int(sys.argv[6]) if len(sys.argv) > 6 else -1
+    NSteps = int(sys.argv[7]) if len(sys.argv) > 7 else -1
     while NSteps < 0:
         try:
-            NSteps = int(input('Insert the value for NSteps [default 500]: '))
+            NSteps = int(input('Insert the value for NSteps [default 50]: '))
         except Exception as e:
             logging.info('Using default value')
-            NSteps = 500
+            NSteps = 50
 
     
     ### SIMULATIONS ###
