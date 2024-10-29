@@ -58,6 +58,10 @@ class Results():
         self.total_pcc = {}
         self.total_reg_err = {}
 
+        self.triangles_min_weight = []
+        self.triangles_max_weight = []
+        self.triangles_avg_weight = []
+
 
 class SCM(Thread):
     
@@ -76,11 +80,33 @@ class SCM(Thread):
 
         triangles_list = set()
         triangles = [clique for clique in nx.enumerate_all_cliques(G) if len(clique) == 3]
+        self.save_triangles_details(node_neighbors_dict, triangles)
+
         for triangle in triangles:
             triangles_list.add(tuple(sorted(triangle)))
         triangles_list = [list(tri) for tri in triangles_list]
 
         return node_neighbors_dict, triangles_list
+    
+    from itertools import combinations
+    def save_triangles_details(self, node_neighbors_dict, triangles):
+
+        mins = []
+        maxs = []
+        avgs = []
+
+        for triangle in triangles:
+            edges = list(combinations(triangle, 2))
+            weights = list(map(lambda edge: node_neighbors_dict[edge[0]][edge[1]]['weight'], edges))
+            mins.append(min(weights))
+            maxs.append(max(weights))
+            avgs.append(np.mean(weights))
+
+        self.params.lock.acquire()       
+        self.results.triangles_min_weight.append(min(mins))
+        self.results.triangles_max_weight.append(max(maxs))
+        self.results.triangles_avg_weight.append(np.mean(avgs))
+        self.params.lock.release()
 
     def import_connectome(self):
 
@@ -105,13 +131,13 @@ class SCM(Thread):
                 
                 #Updating the q_i (infections) - d=1
                 for j in node_neighbors_dict[i]:
-                    wj = 1-node_neighbors_dict[i][j]['weight']
+                    wj = 1#-node_neighbors_dict[i][j]['weight']
                     q *= (1.-beta*wj*p[j])
                     
                 #Updating the q_i (infections) - d=2
                 for j, k in tri_neighbors_dict[i]:
-                    wj = 1-node_neighbors_dict[i][j]['weight']
-                    wk = 1-node_neighbors_dict[i][k]['weight']
+                    wj = 1#-node_neighbors_dict[i][j]['weight']
+                    wk = 1#-node_neighbors_dict[i][k]['weight']
                     q *= (1.-beta_D*wj*p[j]*wk*p[k])
                 
                 #Updating the vector
@@ -294,6 +320,9 @@ if __name__=="__main__":
     
     exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps)
         
+    print(f"Mins mean: {np.mean(results.triangles_min_weight)}, sdt: {np.std(results.triangles_min_weight)}")
+    print(f"Maxs mean: {np.mean(results.triangles_max_weight)}, sdt: {np.std(results.triangles_max_weight)}")
+    print(f"Avgs mean: {np.mean(results.triangles_avg_weight)}, sdt: {np.std(results.triangles_avg_weight)}")
         
     total_time = time() - total_time
     sleep(1)   
