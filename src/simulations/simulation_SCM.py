@@ -20,6 +20,7 @@ from tqdm import tqdm
 from scipy.stats import pearsonr as pearson_corr_coef
 from sklearn.metrics import mean_squared_error
 import re
+from itertools import combinations
 
 import networkx as nx
 
@@ -34,13 +35,15 @@ logging.basicConfig(format='%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5
 digits = 4
 
 class Params():
-    def __init__(self, mu, lambda1, lambdaD, I_percentage, NSteps):
+    def __init__(self, mu, lambda1, lambdaD, I_percentage, NSteps, w_th, w_th_mode):
         self.lock = Lock()
         self.mu = mu
         self.lambda1 = lambda1
         self.lambdaD = lambdaD
         self.I_percentage = I_percentage
         self.NSteps = NSteps
+        self.w_th = w_th
+        self.w_th_mode = w_th_mode
 
 class Results():
 
@@ -58,6 +61,7 @@ class Results():
         self.total_pcc = {}
         self.total_reg_err = {}
 
+        self.triangles_count = []
         self.triangles_min_weight = []
         self.triangles_max_weight = []
         self.triangles_avg_weight = []
@@ -80,16 +84,31 @@ class SCM(Thread):
 
         triangles_list = set()
         triangles = [clique for clique in nx.enumerate_all_cliques(G) if len(clique) == 3]
-        self.save_triangles_details(node_neighbors_dict, triangles)
-
+        
+        
         for triangle in triangles:
-            triangles_list.add(tuple(sorted(triangle)))
+            if self.should_triangle_be_added(triangle, node_neighbors_dict):
+                triangles_list.add(tuple(sorted(triangle)))
         triangles_list = [list(tri) for tri in triangles_list]
+        self.save_triangles_details(triangles, node_neighbors_dict, triangles_list)
 
         return node_neighbors_dict, triangles_list
     
-    from itertools import combinations
-    def save_triangles_details(self, node_neighbors_dict, triangles):
+    def should_triangle_be_added(self, triangle, node_neighbors_dict):
+        add_triangle = False
+        if self.params.w_th_mode == 'NO':
+            add_triangle =  True
+        else:
+            edges = list(combinations(triangle, 2))
+            weights = list(map(lambda edge: node_neighbors_dict[edge[0]][edge[1]]['weight'], edges))
+            if self.params.w_th_mode == 'ALL_B' and weights.min() >= self.params.w_th:
+                add_triangle = True
+            elif self.params.w_th_mode == 'MEAN_B' and np.mean(weights) >= self.params.w_th:
+                add_triangle = True
+
+        return add_triangle
+    
+    def save_triangles_details(self, triangles, node_neighbors_dict, triangles_list):
 
         mins = []
         maxs = []
@@ -106,6 +125,7 @@ class SCM(Thread):
         self.results.triangles_min_weight.append(min(mins))
         self.results.triangles_max_weight.append(max(maxs))
         self.results.triangles_avg_weight.append(np.mean(avgs))
+        self.results.triangles_count.append(len(triangles_list))
         self.params.lock.release()
 
     def import_connectome(self):
@@ -210,9 +230,9 @@ class SCM(Thread):
             
         return
 
-def exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps):
+def exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps, w_th, w_th_mode):
     
-    params = Params(mu, lambda1, lambdaD, I_percentage, NSteps)
+    params = Params(mu, lambda1, lambdaD, I_percentage, NSteps, w_th, w_th_mode)
 
     works = []
     for subj, paths in tqdm(dataset.items()):
@@ -311,6 +331,22 @@ if __name__=="__main__":
             logging.info('Using default value')
             NSteps = 50
 
+    w_th = float(sys.argv[8]) if len(sys.argv) > 8 else -1
+    while w_th < 0:
+        try:
+            w_th = int(input('Insert the value for weights threshold [default 0.048]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            w_th = 0.048
+
+    w_th_mode = sys.argv[9] if len(sys.argv) > 9 else ''
+    while w_th_mode == '':
+        try:
+            w_th_mode = int(input('Insert the value for weights threshold mode [default No]: '))
+        except Exception as e:
+            logging.info('Using default value')
+            w_th_mode = 'NO'
+
     
     ### SIMULATIONS ###
 
@@ -318,7 +354,7 @@ if __name__=="__main__":
 
     results = Results()
     
-    exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps)
+    exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NSteps, w_th, w_th_mode)
         
     print(f"Mins mean: {np.mean(results.triangles_min_weight)}, sdt: {np.std(results.triangles_min_weight)}")
     print(f"Maxs mean: {np.mean(results.triangles_max_weight)}, sdt: {np.std(results.triangles_max_weight)}")
@@ -368,8 +404,11 @@ if __name__=="__main__":
     out_file.write(f"lambdaD: {lambdaD}\n")
     out_file.write(f"I_percentage: {I_percentage}\n")
     out_file.write(f"NSteps: {NSteps}\n")
+    out_file.write(f"Weights threshold: {w_th}\n")
+    out_file.write(f"Weights threshold mode: {w_th_mode}\n")
     out_file.write(f"Subjects: {len(dataset.keys())}\n")
     out_file.write(f"Total time (s): {format(total_time, '.2f')}\n")
+    out_file.write(f"Triangles count: {np.mean(results.triangles_count)}\n")    
     out_file.write(results.pt_avg.get_string()+'\n')
     out_file.write(results.pt_subs.get_string())    
     out_file.close()
@@ -379,6 +418,8 @@ if __name__=="__main__":
     logging.info(f"mu: {mu}")
     logging.info(f"lambdaD: {lambdaD}")
     logging.info(f"NSteps: {NSteps}")
+    logging.info(f"Weights threshold: {w_th}")
+    logging.info(f"Weights threshold mode: {w_th_mode}")
     logging.info(f"Cores: {num_cores}")
     logging.info(f"Subjects: {len(dataset.keys())}")
     logging.info(f"Total time (s): {format(total_time, '.2f')}")
