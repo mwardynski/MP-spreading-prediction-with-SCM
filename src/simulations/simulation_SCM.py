@@ -177,8 +177,11 @@ class SCM(Thread):
         tri_neighbors_dict = get_tri_neighbors_dict(triangles_list)
 
         beta = 1.*(self.params.mu/avg_k1)*self.params.lambda1
-
-        beta_D = 1.*(self.params.mu/avg_k2)*self.params.lambdaD
+        if avg_k2 > 0:
+            beta_D = 1.*(self.params.mu/avg_k2)*self.params.lambdaD
+        else:
+            beta_D = 0
+            
         i0 = self.params.I_percentage/100.
         _, p = self.markovChain(beta, beta_D, node_neighbors_dict, tri_neighbors_dict, i0)
         t1_pred = p
@@ -247,6 +250,7 @@ def exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NS
         w.join()
         works.remove(w)
 
+    print(list(results.total_mse.values()))
     avg_mse = round(np.mean(list(results.total_mse.values())), digits)
 
     return avg_mse

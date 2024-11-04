@@ -26,7 +26,7 @@ def objective(trial):
     # mu = trial.suggest_float('mu', 0.00001, 0.0001)
     # lambda1 = trial.suggest_float('lambda1', 0.0001, 0.5)
     # lambdaD = trial.suggest_float('lambdaD', 0.0001, 2.5)
-    w_th = trial.suggest_float('w_th', 0, 1)
+    w_th = trial.suggest_float('w_th', 0.75, 0.9)
     
     
     return simulation_SCM.exec_sim(dataset, simulation_SCM.Results(), num_cores, mu, lambda1, lambdaD, I_percentage, Nsteps, w_th, w_th_mode)
