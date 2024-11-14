@@ -151,13 +151,15 @@ class SCM(Thread):
                 
                 #Updating the q_i (infections) - d=1
                 for j in node_neighbors_dict[i]:
-                    wj = 1#-node_neighbors_dict[i][j]['weight']
+                    # weights should be applied directly, not 1-wj
+                    wj = 1#node_neighbors_dict[i][j]['weight']
                     q *= (1.-beta*wj*p[j])
                     
                 #Updating the q_i (infections) - d=2
                 for j, k in tri_neighbors_dict[i]:
-                    wj = 1#-node_neighbors_dict[i][j]['weight']
-                    wk = 1#-node_neighbors_dict[i][k]['weight']
+                    # weights should be applied directly, not 1-wj
+                    wj = 1#node_neighbors_dict[i][j]['weight']
+                    wk = 1#node_neighbors_dict[i][k]['weight']
                     q *= (1.-beta_D*wj*p[j]*wk*p[k])
                 
                 #Updating the vector
@@ -181,7 +183,7 @@ class SCM(Thread):
             beta_D = 1.*(self.params.mu/avg_k2)*self.params.lambdaD
         else:
             beta_D = 0
-            
+
         i0 = self.params.I_percentage/100.
         _, p = self.markovChain(beta, beta_D, node_neighbors_dict, tri_neighbors_dict, i0)
         t1_pred = p
@@ -225,6 +227,9 @@ class SCM(Thread):
         self.params.lock.acquire()
         save_prediction_plot(self.t0_concentration, self.t1_concentration_pred, self.t1_concentration, self.subj, self.subj + 'test/' + sim_name + '_' + date + '.png', mse, pcc)
         logging.info(f"Saving prediction in {self.subj + 'test/' + sim_name + '_' + date + '.png'}")
+        save_terminal_concentration(self.subj + 'test/', self.t0_concentration, sim_name + '_t0')
+        save_terminal_concentration(self.subj + 'test/', self.t1_concentration_pred, sim_name + '_t1_pred')
+        save_terminal_concentration(self.subj + 'test/', self.t1_concentration, sim_name + '_t1')
         self.results.total_mse[self.subj] = mse
         self.results.total_pcc[self.subj] = pcc
         self.results.total_reg_err[self.subj] = reg_err
@@ -250,7 +255,6 @@ def exec_sim(dataset, results, num_cores, mu, lambda1, lambdaD, I_percentage, NS
         w.join()
         works.remove(w)
 
-    print(list(results.total_mse.values()))
     avg_mse = round(np.mean(list(results.total_mse.values())), digits)
 
     return avg_mse
