@@ -12,3 +12,5 @@ nipype
 scikit-image
 spektral
 optuna
+torch
+torch-geometric
